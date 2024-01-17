@@ -21,6 +21,7 @@ void* copy_file(void* arg) {
     int src_fd = open(task->src, O_RDONLY);
     if (src_fd == -1) {
         perror("Error opening source file");
+        free(arg);
         pthread_exit(NULL);
     }
 
@@ -28,6 +29,7 @@ void* copy_file(void* arg) {
     if (dest_fd == -1) {
         perror("Error opening destination file");
         close(src_fd);
+        free(arg);
         pthread_exit(NULL);
     }
 
@@ -39,8 +41,27 @@ void* copy_file(void* arg) {
             perror("Error writing to destination file");
             close(src_fd);
             close(dest_fd);
+            free(arg);
             pthread_exit(NULL);
         }
+    }
+
+    struct stat statbuf;
+
+    if (fstat(src_fd, &statbuf) == -1) {
+        perror("Error getting source file information");
+        close(src_fd);
+        close(dest_fd);
+        free(arg);
+        pthread_exit(NULL);
+    }
+
+    if (fchmod(dest_fd, statbuf.st_mode) == -1) {
+        perror("Error setting destination file permissions");
+        close(src_fd);
+        close(dest_fd);
+        free(arg);
+        pthread_exit(NULL);
     }
 
     close(src_fd);
@@ -64,30 +85,6 @@ void* copy_directory(void* arg) {
 
     if (strcmp(abs_src, abs_dest) == 0) pthread_exit(NULL);
 
-    /*char* str_s = strrchr(abs_src, '/');
-    char* str_d = strrchr(abs_dest, '/');
-    int count_s = str_s - abs_src;
-    int count_d = str_d - abs_dest;
-    strncpy(abs_src, abs_src + count_s, strlen(abs_src) - count_s);
-    abs_src[strlen(abs_src) - count_s] = '\0';
-    strncpy(abs_dest, abs_dest + count_d, strlen(abs_dest) - count_d);
-    abs_dest[strlen(abs_dest) - count_d] = '\0';*/
-
-    /*char* str_s = strrchr(abs_src, '/');
-    char* str_d = strrchr(abs_dest, '/');
-    int count_s = str_s - abs_src;
-    int count_d = str_d - abs_dest;
-    strncpy(abs_src, abs_src, count_s);
-    abs_src[count_s] = '\0';
-    strncpy(abs_dest, abs_dest, count_d);
-    abs_dest[count_d] = '\0';
-
-    if (strcmp(abs_src, abs_dest) == 0) pthread_exit(NULL);
-
-    realpath(task_src, abs_src);
-    realpath(task_dest, abs_dest);
-
-    printf("%s\n%s", abs_src, abs_dest);*/
     char* str = "";
 
     if (strlen(abs_src) <= strlen(abs_dest)) {
@@ -111,26 +108,43 @@ void* copy_directory(void* arg) {
         pthread_exit(NULL);
     }
 
-    struct dirent* entry;
-    struct stat statbuf;
+    long name_max = pathconf(task->src, _PC_NAME_MAX);
+    long entry_size = sizeof(struct dirent) + name_max + 1;
+    //struct dirent* entry;
+    struct dirent *entry = malloc(entry_size);
+    struct dirent *result;
 
-    while ((entry = readdir(dir)) != NULL) {
+    //while ((entry = readdir(dir)) != NULL) {
+    while (readdir_r(dir, entry, &result) == 0 && result != NULL) {
+
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
 
-        char src_path[MAX_PATH_LEN];
-        char dest_path[MAX_PATH_LEN];
+        //char src_path[MAX_PATH_LEN];
+        //char dest_path[MAX_PATH_LEN];
 
-        snprintf(src_path, sizeof(src_path), "%s/%s", task->src, entry->d_name);
-        snprintf(dest_path, sizeof(dest_path), "%s/%s", task->dest, entry->d_name);
+        //snprintf(src_path, sizeof(src_path), "%s/%s", task->src, entry->d_name);
+        //snprintf(dest_path, sizeof(dest_path), "%s/%s", task->dest, entry->d_name);
 
-        if (stat(src_path, &statbuf) == -1) {
+        size_t src_path_len = strlen(task->src) + strlen(entry->d_name) + 2;
+        size_t dest_path_len = strlen(task->dest) + strlen(entry->d_name) + 2;
+
+        char *src_path = malloc(src_path_len);
+        char *dest_path = malloc(dest_path_len);
+
+        snprintf(src_path, src_path_len + 1, "%s/%s", task->src, entry->d_name);
+        snprintf(dest_path, dest_path_len + 1, "%s/%s", task->dest, entry->d_name);
+        
+        struct stat statbuf;
+
+        if (lstat(src_path, &statbuf) == -1) {
             perror("Error getting file information");
             continue;
         }
 
         if (S_ISDIR(statbuf.st_mode)) {
+
             if (mkdir(dest_path, statbuf.st_mode) == -1) {
                 perror("Error creating destination directory");
                 closedir(dir);
@@ -144,6 +158,7 @@ void* copy_directory(void* arg) {
             pthread_t tid;
             pthread_create(&tid, NULL, copy_directory, subtask);
             pthread_detach(tid);
+
         } else if (S_ISREG(statbuf.st_mode)) {
             pthread_t tid;
             copy_task* file_task = malloc(sizeof(copy_task));
@@ -152,6 +167,10 @@ void* copy_directory(void* arg) {
             pthread_create(&tid, NULL, copy_file, file_task);
             pthread_detach(tid);
         }
+
+        free(src_path);
+        free(dest_path);
+
     }
 
     closedir(dir);
@@ -170,8 +189,16 @@ int main(int argc, char* argv[]) {
     const char* dest = argv[2];
 
     struct stat statbuf;
-    stat(src, &statbuf);
-    mkdir(dest, statbuf.st_mode);
+    
+    if (stat(src, &statbuf) == -1) {
+        perror("Error getting source directory information");
+        exit(EXIT_FAILURE);
+    }
+
+    if (mkdir(dest, statbuf.st_mode) == -1) {
+        perror("Error creating destination directory");
+        exit(EXIT_FAILURE);
+    }
 
     copy_task* task = malloc(sizeof(copy_task));
     strncpy(task->src, src, MAX_PATH_LEN);
