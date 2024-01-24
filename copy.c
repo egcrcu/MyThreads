@@ -25,7 +25,16 @@ void* copy_file(void* arg) {
         pthread_exit(NULL);
     }
 
-    int dest_fd = open(task->dest, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    struct stat statbuf;
+
+    if (fstat(src_fd, &statbuf) == -1) {
+        perror("Error getting source file information");
+        close(src_fd);
+        free(arg);
+        pthread_exit(NULL);
+    }
+
+    int dest_fd = open(task->dest, O_WRONLY | O_CREAT | O_TRUNC, statbuf.st_mode);
     if (dest_fd == -1) {
         perror("Error opening destination file");
         close(src_fd);
@@ -44,24 +53,6 @@ void* copy_file(void* arg) {
             free(arg);
             pthread_exit(NULL);
         }
-    }
-
-    struct stat statbuf;
-
-    if (fstat(src_fd, &statbuf) == -1) {
-        perror("Error getting source file information");
-        close(src_fd);
-        close(dest_fd);
-        free(arg);
-        pthread_exit(NULL);
-    }
-
-    if (fchmod(dest_fd, statbuf.st_mode) == -1) {
-        perror("Error setting destination file permissions");
-        close(src_fd);
-        close(dest_fd);
-        free(arg);
-        pthread_exit(NULL);
     }
 
     close(src_fd);
@@ -174,6 +165,7 @@ void* copy_directory(void* arg) {
     }
 
     closedir(dir);
+    free(entry);
     free(arg);
     pthread_exit(NULL);
 }
@@ -190,7 +182,7 @@ int main(int argc, char* argv[]) {
 
     struct stat statbuf;
     
-    if (stat(src, &statbuf) == -1) {
+    if (lstat(src, &statbuf) == -1) {
         perror("Error getting source directory information");
         exit(EXIT_FAILURE);
     }
