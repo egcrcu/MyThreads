@@ -1,0 +1,10 @@
+#!/bin/bash
+gcc hello_printf.c -o hello
+./hello
+echo 
+gcc hello_write.c -o hello
+./hello
+echo
+gcc hello_syscall.c -o hello
+./hello
+echo

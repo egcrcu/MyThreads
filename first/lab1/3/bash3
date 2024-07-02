@@ -1,0 +1,5 @@
+#!/bin/bash
+gcc hello_shared.c -o libhello_shared.so -shared
+gcc hello3.c -o hello3 -lhello_shared -L.
+export LD_LIBRARY_PATH=./
+./hello3

@@ -1,0 +1,5 @@
+#!/bin/bash
+gcc -c hello_static.c -o hello_static.o
+ar rc libhello_static.a hello_static.o
+gcc hello2.c -o hello2 -lhello_static -L.
+./hello2

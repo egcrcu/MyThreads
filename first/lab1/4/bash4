@@ -1,0 +1,5 @@
+#!/bin/bash
+gcc hello_shared_dyn.c -o libhello_shared_dyn.so -shared
+gcc hello4.c -o hello4 -lhello_shared_dyn -L.
+export LD_LIBRARY_PATH=./
+./hello4

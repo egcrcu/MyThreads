@@ -1,0 +1,3 @@
+#!/bin/bash
+gcc hello1.c -o hello1
+./hello1
